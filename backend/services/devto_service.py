@@ -1,11 +1,12 @@
 """
 Dev.to API service — free, no auth required.
 Returns developer community articles relevant to the niche.
-Great for SaaS, productivity, developer tools, and startup niches.
+Quality filter: min 10 reactions, published ≤3 years ago, relevant to niche.
 """
 import httpx
 import asyncio
 import re
+from services.data_quality import filter_items
 
 DEVTO_API = "https://dev.to/api"
 
@@ -47,7 +48,7 @@ async def _fetch_articles(client: httpx.AsyncClient, tag: str) -> list[dict]:
     try:
         r = await client.get(
             f"{DEVTO_API}/articles",
-            params={"tag": tag, "per_page": 8, "top": 30},
+            params={"tag": tag, "per_page": 15, "top": 30},
             timeout=8.0,
         )
         r.raise_for_status()
@@ -58,18 +59,21 @@ async def _fetch_articles(client: httpx.AsyncClient, tag: str) -> list[dict]:
                 "content": (a.get("description") or "")[:400],
                 "url": a.get("url", ""),
                 "reactions": a.get("public_reactions_count", 0),
+                "published_at": a.get("published_at", ""),
                 "source": "Dev.to",
                 "tag": tag,
             }
             for a in articles
-            if a.get("title") and a.get("public_reactions_count", 0) > 5
+            if a.get("title")
+            and a.get("public_reactions_count", 0) >= 10  # min 10 reactions = community-validated
+            and len(a.get("description") or "") >= 50     # must have real content
         ]
     except Exception:
         return []
 
 
 async def search_devto(niche: str) -> list[dict]:
-    """Search Dev.to articles by niche-relevant tags."""
+    """Search Dev.to articles. Only returns community-validated, niche-relevant content."""
     tags = _extract_tags(niche)
 
     async with httpx.AsyncClient() as client:
@@ -81,7 +85,7 @@ async def search_devto(niche: str) -> list[dict]:
         if isinstance(r, list):
             all_articles.extend(r)
 
-    # Deduplicate by URL, sort by reactions
+    # Deduplicate by URL
     seen = set()
     unique = []
     for a in sorted(all_articles, key=lambda x: x["reactions"], reverse=True):
@@ -89,4 +93,16 @@ async def search_devto(niche: str) -> list[dict]:
             seen.add(a["url"])
             unique.append(a)
 
-    return unique[:10]
+    # Apply quality + relevance filter
+    return filter_items(
+        unique,
+        niche=niche,
+        title_key="title",
+        content_key="content",
+        score_key="reactions",
+        min_score=10,
+        date_key="published_at",
+        max_years=3,
+        min_relevance=0.15,
+        limit=10,
+    )

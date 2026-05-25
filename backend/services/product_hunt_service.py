@@ -73,28 +73,42 @@ async def search_product_hunt(niche: str) -> list[dict]:
         results = []
         for edge in edges:
             node = edge.get("node", {})
-            if not node.get("name"):
+            name = node.get("name", "").strip()
+            description = (node.get("description") or "").strip()
+            votes = node.get("votesCount", 0)
+            website = node.get("website", "").strip()
+
+            # Quality gates for Product Hunt data:
+            if not name:
+                continue
+            if votes < 15:                    # min 15 votes = real community interest
+                continue
+            if len(description) < 30:         # must have a real description
+                continue
+            if not website:                   # must be a real product with a URL
                 continue
 
-            # Extract top comments (user feedback)
+            # Extract top comments (user feedback = real opinions)
             comments = [
                 c["node"]["body"][:200]
                 for c in node.get("comments", {}).get("edges", [])
                 if c.get("node", {}).get("body")
+                and len(c["node"]["body"]) > 30     # skip very short comments
             ]
 
             results.append({
-                "name": node.get("name", ""),
+                "name": name,
                 "tagline": node.get("tagline", ""),
-                "description": (node.get("description") or "")[:400],
-                "votes": node.get("votesCount", 0),
+                "description": description[:400],
+                "votes": votes,
                 "reviews": node.get("reviewsCount", 0),
                 "rating": node.get("reviewsRating", 0),
-                "url": node.get("website", ""),
-                "top_comments": comments,
+                "url": website,
+                "top_comments": comments[:3],
                 "source": "Product Hunt",
             })
 
+        # Sort by votes (= community validation strength) and return top results
         return sorted(results, key=lambda x: x["votes"], reverse=True)[:8]
 
     except Exception:
