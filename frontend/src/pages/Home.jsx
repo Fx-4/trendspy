@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { LogIn, LogOut, LayoutDashboard, Zap, Shield, Clock } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { streamAnalysis, saveBrief } from "../lib/api";
+import { sanitizeBrief } from "../lib/utils";
 import InputForm from "../components/InputForm";
 import LoadingState from "../components/LoadingState";
 import MarketBriefCard from "../components/MarketBriefCard";
@@ -36,10 +37,10 @@ export default function Home({ session }) {
       },
       onResult({ section, data }) {
         sections[section] = data;
-        setBrief({ ...sections, niche_input: niche });
+        setBrief(sanitizeBrief({ ...sections, niche_input: niche }));
       },
       onCached(data) {
-        setBrief({ ...data, niche_input: niche });
+        setBrief(sanitizeBrief({ ...data, niche_input: niche }));
       },
       onDone() {
         setLoading(false);

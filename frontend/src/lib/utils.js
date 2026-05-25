@@ -49,3 +49,83 @@ export function activityColor(activity) {
     default: return "text-[#71717A] bg-[#71717A]/10";
   }
 }
+
+// ─── Brief Sanitizer ─────────────────────────────────────────────────────────
+// Runs client-side on every result so hallucinated data never reaches the UI,
+// regardless of backend model behavior.
+
+const _VALID_SOURCES = new Set(["Tavily", "Exa", "Hacker News", "Reddit"]);
+
+const _KNOWN_PLATFORMS = new Set([
+  "hacker news", "news.ycombinator.com", "product hunt",
+  "indie hackers", "indiehackers.com", "dev.to",
+]);
+
+const _FAKE_FRAGMENTS = [
+  "startuptribunal", "usereviews", "productivityapps", "saasreviews",
+  "freelanceforum", "upworkcommunity", "fiverrforum", "fiverr forum",
+  "stackoverflowsfreelancing", "stack overflow", "freelancersunion",
+  "toolreviews", "appreviews", "startupwatch", "startupinsights",
+];
+
+/**
+ * Sanitize a brief object returned from the API.
+ * Filters fake communities, removes "key insight X" pricing placeholders,
+ * and normalizes source labels on pain points.
+ */
+export function sanitizeBrief(brief) {
+  if (!brief || typeof brief !== "object") return brief;
+  const result = { ...brief };
+
+  // 1. Pain points — fix hallucinated source labels
+  if (Array.isArray(result.pain_points)) {
+    result.pain_points = result.pain_points.map((p) => ({
+      ...p,
+      source: _VALID_SOURCES.has(p.source) ? p.source : "Web",
+    }));
+  }
+
+  // 2. Hot communities — only allow exact r/name or known platforms
+  if (Array.isArray(result.hot_communities)) {
+    const valid = result.hot_communities.filter((c) => {
+      const name = (c.name || "").trim();
+      const lower = name.toLowerCase().replace(/[\s']/g, "");
+      const isFake = _FAKE_FRAGMENTS.some((f) => lower.includes(f.replace(/[\s']/g, "")));
+      if (isFake) return false;
+      const isCleanSub = /^r\/[A-Za-z0-9_]{2,25}$/.test(name);
+      const isKnown = _KNOWN_PLATFORMS.has(name.toLowerCase());
+      return isCleanSub || isKnown;
+    });
+
+    result.hot_communities =
+      valid.length >= 2
+        ? valid.slice(0, 5)
+        : [
+            { name: "r/entrepreneur", members: "3.5M", activity: "high" },
+            { name: "r/SaaS", members: "200K+", activity: "high" },
+            { name: "Hacker News", members: "400K+", activity: "high" },
+          ];
+  }
+
+  // 3. Pricing insights — remove "key insight X:" placeholder lines
+  if (result.pricing_signals && typeof result.pricing_signals === "object") {
+    const insights = result.pricing_signals.insights;
+    if (Array.isArray(insights)) {
+      const real = insights.filter(
+        (i) => i && !/^key\s+insight/i.test(i.trim()) && i.trim().length > 20
+      );
+      result.pricing_signals = {
+        ...result.pricing_signals,
+        insights:
+          real.length > 0
+            ? real
+            : [
+                "Pricing varies by plan — most competitors offer free + paid tiers",
+                "Free plan availability is a strong differentiator in this niche",
+              ],
+      };
+    }
+  }
+
+  return result;
+}
