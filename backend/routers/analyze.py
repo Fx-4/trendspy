@@ -4,6 +4,7 @@ from models.schemas import AnalyzeRequest
 from services import reddit_service, tavily_service, exa_service, groq_service, cache_service, hn_service
 import asyncio
 import json
+import re
 
 router = APIRouter()
 
@@ -51,13 +52,18 @@ def build_context(niche: str, reddit: list, tavily: list, exa: list, hn: list) -
 _FAKE_COMMUNITY_KEYWORDS = {
     "startuptribunal", "usereviews", "productivityapps", "saasreviews",
     "startupreview", "startupwatch", "techstartups", "appreviews",
-    "toolreviews", "startupinsights"
+    "toolreviews", "startupinsights", "freelanceforum", "upworkcommunity",
+    "fiverr", "freelancers union", "freelancersunion", "guru.com",
+    "toptalcommunity", "99designs",
 }
 # Known real non-Reddit platforms
 _KNOWN_PLATFORMS = {
     "hacker news", "news.ycombinator.com", "product hunt", "indie hackers",
     "indiehackers.com", "dev.to", "hashnode", "lobste.rs",
 }
+
+# Regex to extract a valid subreddit name from any string (handles "Reddit's r/foo", "r/foo", etc.)
+_SUBREDDIT_RE = re.compile(r'r/([A-Za-z0-9_]{2,25})\b')
 
 
 def validate_sections(sections: dict) -> dict:
@@ -68,21 +74,27 @@ def validate_sections(sections: dict) -> dict:
         valid = []
         for c in sections["hot_communities"]:
             name = c.get("name", "").strip()
-            name_lower = name.lower().replace(" ", "")
+            name_lower = name.lower()
+
             # Reject known fake names
-            is_fake = any(fake in name_lower for fake in _FAKE_COMMUNITY_KEYWORDS)
-            # Accept: r/subreddit format with alphanumeric name
-            is_subreddit = (
-                name.lower().startswith("r/")
-                and len(name) > 3
-                and name[2:].replace("_", "").replace("-", "").isalnum()
-            )
-            # Accept: known real platforms
-            is_known = name.lower() in _KNOWN_PLATFORMS
-            if not is_fake and (is_subreddit or is_known):
+            is_fake = any(fake in name_lower.replace(" ", "") for fake in _FAKE_COMMUNITY_KEYWORDS)
+            if is_fake:
+                continue
+
+            # Try to extract r/subreddit pattern from anywhere in the name
+            # Handles: "r/freelance", "Reddit's r/smallbusiness", "Subreddit: r/foo"
+            match = _SUBREDDIT_RE.search(name)
+            if match:
+                # Normalize to clean r/name format
+                c = {**c, "name": f"r/{match.group(1)}"}
+                valid.append(c)
+                continue
+
+            # Accept known real platforms (exact match)
+            if name_lower in _KNOWN_PLATFORMS:
                 valid.append(c)
 
-        # Fallback defaults if nothing valid survived
+        # Fallback defaults if fewer than 2 valid communities survived
         if len(valid) < 2:
             valid = [
                 {"name": "r/entrepreneur", "members": "3.5M", "activity": "high"},
@@ -91,18 +103,21 @@ def validate_sections(sections: dict) -> dict:
             ]
         sections["hot_communities"] = valid[:5]
 
-    # 2. PRICING_SIGNALS — remove placeholder template text
+    # 2. PRICING_SIGNALS — remove "key insight X" template placeholders
     if "pricing_signals" in sections and isinstance(sections["pricing_signals"], dict):
         insights = sections["pricing_signals"].get("insights", [])
         if isinstance(insights, list):
             real = [
                 i for i in insights
                 if i
-                and not i.lower().strip().startswith("key insight")
+                and not re.match(r'^key insight\s*\d', i.lower().strip())
                 and len(i.strip()) > 25
             ]
-            if real:
-                sections["pricing_signals"]["insights"] = real
+            # Always write back — replace fakes with a note if nothing real found
+            sections["pricing_signals"]["insights"] = real if real else [
+                "Pricing data varies by tier — check competitor sites for current rates",
+                "Free plan availability is a key differentiator in this space",
+            ]
 
     return sections
 
