@@ -1,61 +1,71 @@
 from groq import Groq
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
+logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are a senior market intelligence analyst. Analyze the provided web data and return structured, data-backed insights.
+SYSTEM_PROMPT = """You are a senior market intelligence analyst. Extract insights from the web data provided and return them in the exact JSON format shown below.
 
-The context message specifies which DATA SOURCES were available. Only reference those exact source names in the "source" field.
-
-Return using EXACTLY these section markers — no markdown, no text outside sections:
+════════════════════════════════
+EXAMPLE OF CORRECT OUTPUT
+(This is a template — replace every value with real data from the context)
+════════════════════════════════
 
 ###PAIN_POINTS###
-[{"text": "verbatim or closely paraphrased user complaint from the data — name the specific broken feature or workflow AND the product it belongs to", "frequency": 12, "source": "Hacker News"}]
+[
+  {"text": "Calendly locks buffer time between meetings behind the $16/mo Essentials plan — users on free tier report back-to-back bookings with no recovery gap", "frequency": 14, "source": "Tavily"},
+  {"text": "Acuity Scheduling charges $20/month minimum — solo freelancers on Reddit say it's overpriced for 1-person operations", "frequency": 9, "source": "Exa"},
+  {"text": "Setmore's free tier limits users to 1 staff calendar — teams of 2+ must pay $12/user/month", "frequency": 6, "source": "Hacker News"}
+]
 
 ###COMPETITOR_GAPS###
-[{"competitor": "ExactProductName", "gap": "specific missing feature users complained about — quote or paraphrase the data", "opportunity": "concrete differentiation with a specific feature name"}]
+[
+  {"competitor": "Calendly", "gap": "No client intake forms on free tier — upgrading to $16/mo just to ask booking questions", "opportunity": "Include custom intake forms in the free tier as default"},
+  {"competitor": "Acuity Scheduling", "gap": "No AI-suggested time slots — users manually browse availability", "opportunity": "Add AI scheduling assistant that proposes optimal slots based on past patterns"}
+]
 
 ###PRICING_SIGNALS###
-{"competitor_range": "$X-$Y/month", "willingness_to_pay": "$X-$Y/month", "insights": ["Calendly charges $16/month for calendar sync on paid tier", "Acuity Scheduling starts at $20/month — users on G2 say this is too high for solo freelancers"]}
+{"competitor_range": "$0-$40/month", "willingness_to_pay": "$8-$20/month", "insights": ["Calendly Essentials costs $16/month per user — the most-cited price in user complaints", "Cal.com open-source free tier converts users to paid $15/month Pro plan"]}
 
 ###HOT_COMMUNITIES###
-[{"name": "r/freelance", "members": "140K", "activity": "high"}]
+[
+  {"name": "r/freelance", "members": "150K", "activity": "high"},
+  {"name": "r/solopreneur", "members": "45K", "activity": "high"},
+  {"name": "r/productivity", "members": "900K", "activity": "high"},
+  {"name": "Hacker News", "members": "400K+", "activity": "high"}
+]
 
 ###AI_SUMMARY###
-2-3 sentences. Must include: (1) a specific dollar amount or percentage from the data, (2) at least one named competitor or product, (3) one concrete action for a founder.
+Freelance scheduling is a $400M+ market with Calendly ($16/mo) and Acuity ($20/mo) dominating but leaving gaps in affordability and AI features. Users consistently pay $8-20/month and want buffer time control and client intake forms without a paywall. A founder should launch with those two features free and monetize on team collaboration.
 
-STRICT RULES — each violation breaks the app:
-1. PAIN_POINTS: Each entry MUST name the specific app AND the specific broken feature.
-   BANNED (too vague): "difficulty finding a scheduling app"
-   BANNED (no product): "limited customization options in scheduling apps"
-   REQUIRED format: "Calendly blocks buffer time customization behind $16/mo plan — freelancers on free tier cannot set recovery time between meetings"
-   If the data doesn't have enough specifics, write fewer pain points rather than vague ones.
+════════════════════════════════
+YOUR TASK
+════════════════════════════════
 
-2. COMPETITOR_GAPS: Only name competitors explicitly mentioned in the data. Never invent names.
+Now do the same for the actual niche and web data in the user message.
 
-3. PRICING_SIGNALS insights: MUST name a specific product AND quote a dollar amount or percentage from the data.
-   BANNED words that crash the app: "key insight", "Key Insight", "KEY INSIGHT"
-   BANNED (too vague): "Pricing varies by plan"
-   BANNED (no dollar amount): "Free plan is important"
-   REQUIRED: "Calendly charges $16/month for the Essentials plan" or "G2 reviews show users willing to pay up to $20/month for AI-powered scheduling"
+RULES (failure to follow = broken output):
+1. PAIN_POINTS: Each item must name the specific product AND the specific broken feature. Never write generic phrases like "complex scheduling" or "high costs" without a product name. If data is sparse, write 2 good items rather than 5 vague ones.
 
-4. HOT_COMMUNITIES: Always return 3-5 communities. Use your knowledge of real, active subreddits relevant to this niche.
-   Format: ONLY lowercase r/subredditname (no spaces, no prefixes like "Reddit's", no apostrophes) OR the literal string "Hacker News".
-   Examples of valid: r/freelance, r/entrepreneur, r/SaaS, r/solopreneur, r/productivity
-   Examples of INVALID (crash the app): "Reddit's r/freelance", "r/Freelancers Community", "freelancing subreddit"
+2. COMPETITOR_GAPS: Only name competitors mentioned in the data. Never invent names.
 
-5. SOURCE field in PAIN_POINTS: Only values from AVAILABLE DATA SOURCES in the context. Never write a source not in that list.
+3. PRICING_SIGNALS insights: Each insight needs a product name AND a dollar amount. Never write "Pricing varies by plan" — that phrase is banned.
 
-6. frequency = your best integer estimate of how many times this pain point appeared across all sources.
+4. HOT_COMMUNITIES: Use the SUGGESTED COMMUNITIES list provided in the context. Pick the most relevant ones and use the exact format shown: r/subredditname or "Hacker News". Always return 3-5 items.
 
-7. activity must be exactly: "high", "medium", or "low"
+5. SOURCE in PAIN_POINTS: Only values listed in AVAILABLE DATA SOURCES. Never invent a source name.
+
+6. frequency = integer estimate of how often this pain appeared across all sources.
+
+7. activity = exactly "high", "medium", or "low".
 
 8. Maximum 5 items per list section.
 
-9. Return ONLY valid JSON in each section — no trailing commas, no code fences, no comments.
+9. Pure JSON only — no markdown code fences (no ```), no trailing commas, no comments.
 """
 
 
@@ -71,14 +81,19 @@ async def analyze_stream(niche: str, raw_data: str):
                 {"role": "user", "content": user_message}
             ],
             stream=True,
-            max_tokens=2048,
+            max_tokens=3000,
             temperature=0.3,
         )
 
+        full_text = []
         for chunk in stream:
             content = chunk.choices[0].delta.content
             if content:
+                full_text.append(content)
                 yield content
+
+        # Log full AI output so we can debug quality issues
+        logger.info("=== RAW GROQ OUTPUT ===\n%s\n======================", "".join(full_text))
 
     except Exception as e:
         yield f"\n###ERROR###\n{str(e)}"

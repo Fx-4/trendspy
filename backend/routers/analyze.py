@@ -18,6 +18,42 @@ def sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
+def _community_hints(niche: str) -> list[str]:
+    """Return 5-6 real subreddit suggestions based on niche keywords."""
+    n = niche.lower()
+    hints: list[str] = []
+
+    # Niche-specific subs first
+    if any(w in n for w in ["freelance", "freelancer", "freelancing", "solopreneur"]):
+        hints += ["r/freelance", "r/freelancers", "r/solopreneur"]
+    if any(w in n for w in ["schedul", "calendar", "booking", "appointment"]):
+        hints += ["r/productivity", "r/solopreneur", "r/freelance"]
+    if any(w in n for w in ["productiv", "task", "todo", "gtd"]):
+        hints += ["r/productivity", "r/getdisciplined", "r/nosurf"]
+    if any(w in n for w in ["market", "seo", "ads", "growth", "content"]):
+        hints += ["r/marketing", "r/SEO", "r/digitalnomad"]
+    if any(w in n for w in ["ai", "artificial", "gpt", "llm", "ml"]):
+        hints += ["r/artificial", "r/MachineLearning", "r/ChatGPT"]
+    if any(w in n for w in ["ecommerce", "shop", "store", "shopify"]):
+        hints += ["r/ecommerce", "r/shopify", "r/dropship"]
+    if any(w in n for w in ["design", "ux", "ui", "figma"]):
+        hints += ["r/web_design", "r/UXDesign", "r/graphic_design"]
+    if any(w in n for w in ["developer", "coding", "code", "dev", "api"]):
+        hints += ["r/webdev", "r/programming", "r/learnprogramming"]
+
+    # Always include broad startup subs
+    hints += ["r/entrepreneur", "r/SaaS", "r/startups"]
+
+    # Deduplicate, keep order
+    seen: set = set()
+    result = []
+    for s in hints:
+        if s not in seen:
+            seen.add(s)
+            result.append(s)
+    return result[:6]
+
+
 def build_context(
     niche: str,
     reddit: list,
@@ -49,9 +85,15 @@ def build_context(
     if product_hunt:
         sources_available.append("Product Hunt")
 
+    community_hints = _community_hints(niche)
+
     parts = [f"NICHE: {niche}\n"]
     parts.append(f"AVAILABLE DATA SOURCES: {', '.join(sources_available)}")
     parts.append("IMPORTANT: Only cite these sources. Never invent source names.\n")
+    parts.append(
+        "SUGGESTED COMMUNITIES (use these exact names in HOT_COMMUNITIES, pick the 3-5 most relevant):\n"
+        + "\n".join(community_hints) + "\n"
+    )
 
     if reddit:
         parts.append("REDDIT DISCUSSIONS:")

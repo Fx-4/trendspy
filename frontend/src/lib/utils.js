@@ -66,7 +66,10 @@ export function activityColor(activity) {
 // Runs client-side on every result so hallucinated data never reaches the UI,
 // regardless of backend model behavior.
 
-const _VALID_SOURCES = new Set(["Tavily", "Exa", "Hacker News", "Reddit"]);
+const _VALID_SOURCES = new Set([
+  "Tavily", "Exa", "Hacker News", "Reddit",
+  "Dev.to", "Stack Exchange", "Product Hunt",
+]);
 
 const _KNOWN_PLATFORMS = new Set([
   "hacker news", "news.ycombinator.com", "product hunt",
