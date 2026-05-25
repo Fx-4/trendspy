@@ -1,0 +1,86 @@
+# ============================================================
+# TrendSpy .gitignore
+# ============================================================
+
+# === SECRETS — NEVER COMMIT ===
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+frontend/.env.local
+*.pem
+*.key
+
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+.Python
+build/
+dist/
+.eggs/
+pip-wheel-metadata/
+MANIFEST
+
+# === Python virtual environments ===
+venv/
+.venv/
+env/
+ENV/
+backend/venv/
+backend/.venv/
+
+# === Node / Frontend ===
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+.npm
+.yarn/cache
+.pnpm-store/
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+*.suo
+*.user
+.project
+.classpath
+
+# === OS ===
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# === Logs ===
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# === Cache / Temp ===
+.cache/
+*.cache
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# === Deployment artifacts ===
+.vercel/
+.koyeb/
+.render/
