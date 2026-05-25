@@ -1,7 +1,11 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from models.schemas import AnalyzeRequest
-from services import reddit_service, tavily_service, exa_service, groq_service, cache_service, hn_service
+from services import (
+    reddit_service, tavily_service, exa_service, groq_service,
+    cache_service, hn_service, devto_service, stackexchange_service,
+    product_hunt_service,
+)
 import asyncio
 import json
 import re
@@ -13,7 +17,20 @@ def sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-def build_context(niche: str, reddit: list, tavily: list, exa: list, hn: list) -> str:
+def build_context(
+    niche: str,
+    reddit: list,
+    tavily: list,
+    exa: list,
+    hn: list,
+    devto: list = None,
+    stackexchange: list = None,
+    product_hunt: list = None,
+) -> str:
+    devto = devto or []
+    stackexchange = stackexchange or []
+    product_hunt = product_hunt or []
+
     # Tell the AI exactly which sources contributed data
     sources_available = []
     if reddit:
@@ -24,27 +41,49 @@ def build_context(niche: str, reddit: list, tavily: list, exa: list, hn: list) -
         sources_available.append("Tavily")
     if exa:
         sources_available.append("Exa")
+    if devto:
+        sources_available.append("Dev.to")
+    if stackexchange:
+        sources_available.append("Stack Exchange")
+    if product_hunt:
+        sources_available.append("Product Hunt")
 
     parts = [f"NICHE: {niche}\n"]
     parts.append(f"AVAILABLE DATA SOURCES: {', '.join(sources_available)}")
-    parts.append("IMPORTANT: Only cite these sources. Never add 'Reddit' as a source if it is not listed above.\n")
+    parts.append("IMPORTANT: Only cite these sources. Never invent source names.\n")
 
     if reddit:
         parts.append("REDDIT DISCUSSIONS:")
-        for p in reddit[:10]:
+        for p in reddit[:8]:
             parts.append(f"- [r/{p['subreddit']}] {p['title']} (score: {p['score']})\n  {p['selftext'][:200]}")
     if hn:
         parts.append("\nHACKER NEWS DISCUSSIONS:")
-        for h in hn[:8]:
+        for h in hn[:6]:
             parts.append(f"- [HN] {h['title']} (points: {h['points']})\n  {h['text'][:200]}")
+    if stackexchange:
+        parts.append("\nSTACK EXCHANGE Q&A (real user questions = pain points):")
+        for q in stackexchange[:8]:
+            parts.append(f"- [{q['site']}] {q['title']} (votes: {q['score']})\n  {q['body'][:200]}")
+    if product_hunt:
+        parts.append("\nPRODUCT HUNT COMPETITORS:")
+        for p in product_hunt[:6]:
+            parts.append(
+                f"- {p['name']}: {p['tagline']} ({p['votes']} votes, "
+                f"{p['reviews']} reviews, rating: {p['rating']}/5)\n  {p['description'][:200]}"
+            )
     if tavily:
         parts.append("\nWEB SOURCES (Tavily):")
-        for r in tavily:
+        for r in tavily[:8]:
             parts.append(f"- {r['title']}: {r['content'][:300]}")
     if exa:
         parts.append("\nWEB SOURCES (Exa):")
-        for r in exa:
+        for r in exa[:6]:
             parts.append(f"- {r['title']}: {r['text'][:300]}")
+    if devto:
+        parts.append("\nDEV.TO ARTICLES:")
+        for a in devto[:6]:
+            parts.append(f"- {a['title']} ({a['reactions']} reactions): {a['content'][:200]}")
+
     return "\n".join(parts)
 
 
@@ -159,16 +198,28 @@ async def analysis_generator(niche: str, client_ip: str, force: bool = False):
     start = time.time()
 
     try:
-        # Step 1: Reddit + Tavily + HN all in parallel
+        # Step 1: All community & web sources in parallel
         yield sse("status", {"message": "Scanning communities & web sources...", "step": 1, "total": 4})
-        reddit_data, tavily_data, hn_data = await asyncio.gather(
+        (
+            reddit_data, tavily_data, hn_data,
+            devto_data, se_data, ph_data,
+        ) = await asyncio.gather(
             reddit_service.search_reddit(niche),
             tavily_service.search_tavily(niche),
             hn_service.search_hn(niche),
+            devto_service.search_devto(niche),
+            stackexchange_service.search_stackexchange(niche),
+            product_hunt_service.search_product_hunt(niche),
         )
-        reddit_msg = f"{len(reddit_data)} Reddit + " if reddit_data else ""
-        hn_msg = f"{len(hn_data)} HN + " if hn_data else ""
-        yield sse("status", {"message": f"✓ {reddit_msg}{hn_msg}{len(tavily_data)} web sources found", "step": 1, "done": True})
+        # Build a readable source count summary
+        source_counts = []
+        if reddit_data:  source_counts.append(f"{len(reddit_data)} Reddit")
+        if hn_data:      source_counts.append(f"{len(hn_data)} HN")
+        if devto_data:   source_counts.append(f"{len(devto_data)} Dev.to")
+        if se_data:      source_counts.append(f"{len(se_data)} Stack Exchange")
+        if ph_data:      source_counts.append(f"{len(ph_data)} Product Hunt")
+        source_counts.append(f"{len(tavily_data)} Tavily")
+        yield sse("status", {"message": f"✓ {' + '.join(source_counts)} found", "step": 1, "done": True})
 
         # Step 2: Exa neural search
         yield sse("status", {"message": "Running neural search...", "step": 2, "total": 4})
@@ -177,7 +228,10 @@ async def analysis_generator(niche: str, client_ip: str, force: bool = False):
 
         # Step 3: AI Analysis
         yield sse("status", {"message": "AI analyzing all data points...", "step": 3, "total": 4})
-        context = build_context(niche, reddit_data, tavily_data, exa_data, hn_data)
+        context = build_context(
+            niche, reddit_data, tavily_data, exa_data, hn_data,
+            devto_data, se_data, ph_data,
+        )
 
         # Stream and parse Groq response
         full_response = ""
