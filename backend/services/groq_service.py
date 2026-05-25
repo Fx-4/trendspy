@@ -1,12 +1,10 @@
 from groq import Groq
 import os
-import logging
 from dotenv import load_dotenv
 
 load_dotenv()
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
-logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are a senior market intelligence analyst. Extract insights from the web data provided and return them in the exact JSON format shown below.
 
@@ -92,8 +90,13 @@ async def analyze_stream(niche: str, raw_data: str):
                 full_text.append(content)
                 yield content
 
-        # Log full AI output so we can debug quality issues
-        logger.info("=== RAW GROQ OUTPUT ===\n%s\n======================", "".join(full_text))
+        # Print raw AI output to uvicorn stdout for quality debugging
+        raw = "".join(full_text)
+        print("\n" + "="*60)
+        print("RAW GROQ OUTPUT:")
+        print("="*60)
+        print(raw)
+        print("="*60 + "\n", flush=True)
 
     except Exception as e:
         yield f"\n###ERROR###\n{str(e)}"
