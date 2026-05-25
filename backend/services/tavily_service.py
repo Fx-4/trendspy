@@ -44,12 +44,12 @@ async def search_tavily(niche: str) -> list[dict]:
         return []
 
     queries = [
-        # General competitor/review landscape
-        (f"{niche} alternatives competitors comparison review", "basic", 8),
-        # Specific pricing pages — advanced depth fetches actual pricing tables
-        (f"{niche} tool pricing plans cost per month", "advanced", 5),
-        # Real user complaints — reddit/HN snippets via Tavily
-        (f"{niche} reddit complaints pain points limitations users", "basic", 6),
+        # User complaints and honest reviews
+        (f"{niche} problems complaints limitations honest review cons", "basic", 8),
+        # Specific pricing — advanced scrapes actual pricing pages
+        (f"{niche} software pricing plans how much cost per month", "advanced", 5),
+        # What users wish the product had / what's missing
+        (f"why freelancers hate {niche} tools what is missing feature requests", "basic", 6),
     ]
 
     async with httpx.AsyncClient(timeout=20.0) as client:

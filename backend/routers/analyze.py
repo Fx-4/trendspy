@@ -115,13 +115,13 @@ def build_context(
                 f"{p['reviews']} reviews, rating: {p['rating']}/5)\n  {p['description'][:200]}"
             )
     if tavily:
-        parts.append("\nWEB SOURCES (Tavily):")
-        for r in tavily[:8]:
-            parts.append(f"- {r['title']}: {r['content'][:300]}")
+        parts.append("\nTAVILY SEARCH RESULTS (source = Tavily):")
+        for r in tavily[:10]:
+            parts.append(f"- {r['title']}: {r['content'][:400]}")
     if exa:
-        parts.append("\nWEB SOURCES (Exa):")
-        for r in exa[:6]:
-            parts.append(f"- {r['title']}: {r['text'][:300]}")
+        parts.append("\nEXA NEURAL SEARCH RESULTS (source = Exa):")
+        for r in exa[:8]:
+            parts.append(f"- {r['title']}: {r['text'][:400]}")
     if devto:
         parts.append("\nDEV.TO ARTICLES:")
         for a in devto[:6]:

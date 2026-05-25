@@ -43,8 +43,8 @@ async def search_exa(niche: str) -> list[dict]:
     import asyncio
     async with httpx.AsyncClient(timeout=15.0) as client:
         complaints, pricing = await asyncio.gather(
-            _exa_query(client, headers, f"{niche} user complaints problems limitations review", 5),
-            _exa_query(client, headers, f"{niche} software pricing plans how much cost", 4),
+            _exa_query(client, headers, f"frustrated with {niche} tool — here is why I switched or stopped using it", 5),
+            _exa_query(client, headers, f"{niche} app pricing breakdown Calendly Acuity Cal.com monthly cost", 4),
         )
 
     seen = set()
