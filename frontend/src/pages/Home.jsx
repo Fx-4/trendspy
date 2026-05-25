@@ -19,6 +19,8 @@ export default function Home({ session }) {
   const [savedId, setSavedId] = useState(null);
   const [shareUrl, setShareUrl] = useState(null);
   const [abortFn, setAbortFn] = useState(null);
+  const [isCached, setIsCached] = useState(false);
+  const [cachedAt, setCachedAt] = useState(null);
 
   async function handleAnalyze(niche, force = false) {
     setLoading(true);
@@ -28,6 +30,8 @@ export default function Home({ session }) {
     setNicheInput(niche);
     setSavedId(null);
     setShareUrl(null);
+    setIsCached(false);
+    setCachedAt(null);
 
     const sections = {};
 
@@ -41,9 +45,13 @@ export default function Home({ session }) {
       },
       onCached(data) {
         setBrief(sanitizeBrief({ ...data, niche_input: niche }));
+        setIsCached(true);
       },
-      onDone() {
+      onDone(data) {
         setLoading(false);
+        if (data?.cached && data?.cached_at) {
+          setCachedAt(data.cached_at);
+        }
       },
       onError(data) {
         setError(data.message || "Analysis failed. Please try again.");
@@ -191,25 +199,21 @@ export default function Home({ session }) {
       {/* Result */}
       {brief && !loading && (
         <div className="mx-auto max-w-5xl px-6 pt-8 pb-16 space-y-6">
-          {/* Navigation buttons */}
-          <div className="flex justify-center gap-3">
+          {/* Back button */}
+          <div className="flex justify-center">
             <button
               onClick={() => { setBrief(null); setError(null); }}
               className="btn-secondary"
             >
               ← Analyze another niche
             </button>
-            <button
-              onClick={handleReanalyze}
-              className="btn-secondary text-sm"
-              title="Skip cache and fetch fresh data"
-            >
-              ↻ Fresh analysis
-            </button>
           </div>
 
           <MarketBriefCard
             brief={{ ...brief, id: savedId }}
+            isCached={isCached}
+            cachedAt={cachedAt}
+            onReanalyze={handleReanalyze}
             session={session}
             onSave={handleSave}
             isSaving={isSaving}

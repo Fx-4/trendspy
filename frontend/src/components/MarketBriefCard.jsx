@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Copy, Check, Share2, Bookmark, Trash2, ExternalLink } from "lucide-react";
-import { copyToClipboard, activityColor, formatDate } from "../lib/utils";
+import { Copy, Check, Share2, Bookmark, Trash2, RefreshCw, Clock } from "lucide-react";
+import { copyToClipboard, activityColor, formatDate, timeAgo } from "../lib/utils";
 
 function PainPointsSection({ data }) {
   if (!Array.isArray(data)) return null;
@@ -125,6 +125,9 @@ const SECTIONS = [
 
 export default function MarketBriefCard({
   brief,
+  isCached = false,
+  cachedAt = null,
+  onReanalyze,
   session,
   onSave,
   onShare,
@@ -134,6 +137,14 @@ export default function MarketBriefCard({
 }) {
   const [copied, setCopied] = useState(false);
   const [activeSection, setActiveSection] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  function handleRefresh() {
+    setRefreshing(true);
+    onReanalyze?.();
+    // Button stays "loading" until the parent re-mounts this component
+    setTimeout(() => setRefreshing(false), 30_000);
+  }
 
   async function handleCopyShare() {
     const url = shareUrl || window.location.href;
@@ -148,6 +159,29 @@ export default function MarketBriefCard({
 
   return (
     <div className="w-full max-w-3xl mx-auto animate-slide-up space-y-4">
+
+      {/* Cache banner — visible whenever result comes from Redis */}
+      {isCached && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-yellow-400/90">
+            <Clock className="h-4 w-4 flex-shrink-0" />
+            <span>
+              {cachedAt
+                ? <>Cached result from <strong>{timeAgo(cachedAt)}</strong> — data may be outdated</>
+                : "Showing cached result — data may be outdated"}
+            </span>
+          </div>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-1.5 text-xs font-medium text-yellow-400 hover:bg-yellow-500/20 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? "Fetching…" : "↻ Fresh analysis"}
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="card">
         <div className="flex items-start justify-between gap-4">

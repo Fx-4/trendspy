@@ -9,6 +9,7 @@ from services import (
 import asyncio
 import json
 import re
+from datetime import datetime, timezone
 
 router = APIRouter()
 
@@ -179,19 +180,30 @@ def validate_sections(sections: dict) -> dict:
 
 
 async def analysis_generator(niche: str, client_ip: str, force: bool = False):
-    # Rate limiting
-    allowed = await cache_service.check_rate_limit(client_ip)
-    if not allowed:
-        yield sse("error", {"message": "Rate limit reached. Try again in 1 hour.", "code": "RATE_LIMIT"})
-        return
+    # Rate limiting — force=True skips the check so cache-busting is never blocked
+    if not force:
+        allowed = await cache_service.check_rate_limit(client_ip)
+        if not allowed:
+            yield sse("error", {"message": "Rate limit reached. Try again in 1 hour.", "code": "RATE_LIMIT"})
+            return
 
     # Check cache (skip if force=True)
     if not force:
         cached = await cache_service.get_cached(niche)
         if cached:
+            try:
+                cached_obj = json.loads(cached)
+            except json.JSONDecodeError:
+                cached_obj = {}
+            # Extract metadata stored alongside sections
+            meta = cached_obj.pop("_meta", {})
             yield sse("status", {"message": "Loading from cache...", "step": 0})
-            yield sse("cached", json.loads(cached))
-            yield sse("done", {"cached": True, "duration_seconds": 0})
+            yield sse("cached", cached_obj)
+            yield sse("done", {
+                "cached": True,
+                "duration_seconds": 0,
+                "cached_at": meta.get("cached_at"),
+            })
             return
 
     import time
@@ -248,8 +260,12 @@ async def analysis_generator(niche: str, client_ip: str, force: bool = False):
 
         yield sse("status", {"message": "✅ Analysis complete!", "step": 4, "done": True})
 
-        # Cache the result
-        await cache_service.set_cache(niche, json.dumps(sections))
+        # Cache the result — include _meta so UI can show "cached X min ago"
+        cache_payload = {
+            **sections,
+            "_meta": {"cached_at": datetime.now(timezone.utc).isoformat()},
+        }
+        await cache_service.set_cache(niche, json.dumps(cache_payload))
 
         duration = round(time.time() - start, 1)
         yield sse("done", {"duration_seconds": duration, "cached": False})

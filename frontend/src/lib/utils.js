@@ -31,6 +31,18 @@ export async function copyToClipboard(text) {
   }
 }
 
+/** Human-readable "X min ago" from an ISO timestamp */
+export function timeAgo(isoString) {
+  if (!isoString) return null;
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  return `${Math.floor(diffHr / 24)}d ago`;
+}
+
 /** Convert section key to display label */
 export const SECTION_LABELS = {
   pain_points: "Pain Points",
