@@ -97,14 +97,23 @@ export function sanitizeBrief(brief) {
       return isCleanSub || isKnown;
     });
 
-    result.hot_communities =
-      valid.length >= 2
-        ? valid.slice(0, 5)
-        : [
-            { name: "r/entrepreneur", members: "3.5M", activity: "high" },
-            { name: "r/SaaS", members: "200K+", activity: "high" },
-            { name: "Hacker News", members: "400K+", activity: "high" },
-          ];
+    // Always ensure at least 3 communities. Fill gaps with reliable defaults.
+    const defaults = [
+      { name: "r/entrepreneur", members: "3.5M", activity: "high" },
+      { name: "r/SaaS", members: "200K+", activity: "high" },
+      { name: "Hacker News", members: "400K+", activity: "high" },
+      { name: "r/startups", members: "600K+", activity: "high" },
+    ];
+    const existingNames = new Set(valid.map((c) => c.name.toLowerCase()));
+    for (const def of defaults) {
+      if (valid.length >= 4) break;
+      if (!existingNames.has(def.name.toLowerCase())) {
+        valid.push(def);
+        existingNames.add(def.name.toLowerCase());
+      }
+    }
+
+    result.hot_communities = valid.slice(0, 5);
   }
 
   // 3. Pricing insights — remove "key insight X:" placeholder lines
