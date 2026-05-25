@@ -69,29 +69,25 @@ _SUBREDDIT_RE = re.compile(r'r/([A-Za-z0-9_]{2,25})\b')
 def validate_sections(sections: dict) -> dict:
     """Post-process AI output: filter fake communities, remove template text."""
 
-    # 1. HOT_COMMUNITIES — keep only real subreddits (r/name) or known platforms
+    # 1. HOT_COMMUNITIES — strict: ONLY accept exact r/name format or known platforms
     if "hot_communities" in sections and isinstance(sections["hot_communities"], list):
         valid = []
         for c in sections["hot_communities"]:
             name = c.get("name", "").strip()
             name_lower = name.lower()
 
-            # Reject known fake names
+            # Reject known fake/generic names
             is_fake = any(fake in name_lower.replace(" ", "") for fake in _FAKE_COMMUNITY_KEYWORDS)
             if is_fake:
                 continue
 
-            # Try to extract r/subreddit pattern from anywhere in the name
-            # Handles: "r/freelance", "Reddit's r/smallbusiness", "Subreddit: r/foo"
-            match = _SUBREDDIT_RE.search(name)
-            if match:
-                # Normalize to clean r/name format
-                c = {**c, "name": f"r/{match.group(1)}"}
-                valid.append(c)
-                continue
+            # ONLY accept names in exact "r/subredditname" format (anchored, no extra text)
+            is_clean_subreddit = bool(re.match(r'^r/[A-Za-z0-9_]{2,25}$', name))
 
-            # Accept known real platforms (exact match)
-            if name_lower in _KNOWN_PLATFORMS:
+            # Accept known real non-Reddit platforms (exact match)
+            is_known = name_lower in _KNOWN_PLATFORMS
+
+            if is_clean_subreddit or is_known:
                 valid.append(c)
 
         # Fallback defaults if fewer than 2 valid communities survived
@@ -104,20 +100,41 @@ def validate_sections(sections: dict) -> dict:
         sections["hot_communities"] = valid[:5]
 
     # 2. PRICING_SIGNALS — remove "key insight X" template placeholders
-    if "pricing_signals" in sections and isinstance(sections["pricing_signals"], dict):
-        insights = sections["pricing_signals"].get("insights", [])
+    # Works on both dict (parsed JSON) and raw string (parse failed)
+    ps = sections.get("pricing_signals")
+    if isinstance(ps, dict):
+        insights = ps.get("insights", [])
         if isinstance(insights, list):
             real = [
                 i for i in insights
                 if i
-                and not re.match(r'^key insight\s*\d', i.lower().strip())
-                and len(i.strip()) > 25
+                and not re.match(r'^key\s+insight', i.lower().strip())
+                and len(i.strip()) > 20
             ]
-            # Always write back — replace fakes with a note if nothing real found
-            sections["pricing_signals"]["insights"] = real if real else [
-                "Pricing data varies by tier — check competitor sites for current rates",
+            ps["insights"] = real if real else [
+                "Pricing varies by plan — most competitors offer free + paid tiers",
                 "Free plan availability is a key differentiator in this space",
             ]
+    elif isinstance(ps, str):
+        # JSON parse failed — try to extract the dict from raw text
+        try:
+            cleaned = re.sub(r'^```(?:json)?\s*\n?', '', ps).strip()
+            cleaned = re.sub(r'\n?```\s*$', '', cleaned).strip()
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, dict):
+                sections["pricing_signals"] = parsed
+                # Re-run the insights filter on the now-parsed dict
+                insights = parsed.get("insights", [])
+                real = [
+                    i for i in insights
+                    if i and not re.match(r'^key\s+insight', i.lower().strip()) and len(i.strip()) > 20
+                ]
+                parsed["insights"] = real if real else [
+                    "Pricing varies by plan — most competitors offer free + paid tiers",
+                    "Free plan availability is a key differentiator in this space",
+                ]
+        except (json.JSONDecodeError, Exception):
+            pass
 
     return sections
 
@@ -206,6 +223,10 @@ def parse_sections(text: str) -> dict:
         next_positions = [text.index(m) for m in markers.values() if m in text and text.index(m) > start]
         end = min(next_positions) if next_positions else len(text)
         raw = text[start:end].strip()
+
+        # Strip markdown code fences that LLMs sometimes add (```json ... ```)
+        raw = re.sub(r'^```(?:json)?\s*\n?', '', raw).strip()
+        raw = re.sub(r'\n?```\s*$', '', raw).strip()
 
         try:
             sections[key] = json.loads(raw)
