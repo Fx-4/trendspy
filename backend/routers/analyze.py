@@ -109,34 +109,53 @@ _SUBREDDIT_RE = re.compile(r'r/([A-Za-z0-9_]{2,25})\b')
 def validate_sections(sections: dict) -> dict:
     """Post-process AI output: filter fake communities, remove template text."""
 
-    # 1. HOT_COMMUNITIES — strict: ONLY accept exact r/name format or known platforms
+    # 1. HOT_COMMUNITIES — normalize messy names, filter fakes
     if "hot_communities" in sections and isinstance(sections["hot_communities"], list):
         valid = []
         for c in sections["hot_communities"]:
-            name = c.get("name", "").strip()
-            name_lower = name.lower()
+            raw_name = c.get("name", "").strip()
+            name_lower = raw_name.lower()
 
-            # Reject known fake/generic names
+            # Reject known fake/generic keyword matches
             is_fake = any(fake in name_lower.replace(" ", "") for fake in _FAKE_COMMUNITY_KEYWORDS)
             if is_fake:
                 continue
 
-            # ONLY accept names in exact "r/subredditname" format (anchored, no extra text)
-            is_clean_subreddit = bool(re.match(r'^r/[A-Za-z0-9_]{2,25}$', name))
-
             # Accept known real non-Reddit platforms (exact match)
-            is_known = name_lower in _KNOWN_PLATFORMS
-
-            if is_clean_subreddit or is_known:
+            if name_lower in _KNOWN_PLATFORMS:
                 valid.append(c)
+                continue
 
-        # Fallback defaults if fewer than 2 valid communities survived
-        if len(valid) < 2:
-            valid = [
-                {"name": "r/entrepreneur", "members": "3.5M", "activity": "high"},
-                {"name": "r/SaaS", "members": "200K+", "activity": "high"},
-                {"name": "Hacker News", "members": "400K+", "activity": "high"},
-            ]
+            # Already in perfect r/subredditname format
+            if re.match(r'^r/[A-Za-z0-9_]{2,25}$', raw_name):
+                valid.append(c)
+                continue
+
+            # Try to EXTRACT a subreddit name from messy strings like
+            # "Reddit's r/freelance", "the r/freelancers subreddit", etc.
+            m = _SUBREDDIT_RE.search(raw_name)
+            if m:
+                extracted = f"r/{m.group(1)}"
+                # Re-check the extracted name is not fake
+                if not any(fake in extracted.lower().replace(" ", "") for fake in _FAKE_COMMUNITY_KEYWORDS):
+                    valid.append({**c, "name": extracted})
+                continue
+
+        # Fallback: if fewer than 3 valid communities, fill with reliable defaults
+        defaults = [
+            {"name": "r/entrepreneur", "members": "3.5M", "activity": "high"},
+            {"name": "r/SaaS", "members": "200K+", "activity": "high"},
+            {"name": "Hacker News", "members": "400K+", "activity": "high"},
+            {"name": "r/startups", "members": "600K+", "activity": "high"},
+        ]
+        existing_names = {c["name"].lower() for c in valid}
+        for d in defaults:
+            if len(valid) >= 4:
+                break
+            if d["name"].lower() not in existing_names:
+                valid.append(d)
+                existing_names.add(d["name"].lower())
+
         sections["hot_communities"] = valid[:5]
 
     # 2. PRICING_SIGNALS — remove "key insight X" template placeholders

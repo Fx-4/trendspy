@@ -97,9 +97,20 @@ export function sanitizeBrief(brief) {
     }));
   }
 
-  // 2. Hot communities — only allow exact r/name or known platforms
+  // 2. Hot communities — normalize messy names, then filter fakes
   if (Array.isArray(result.hot_communities)) {
-    const valid = result.hot_communities.filter((c) => {
+    const normalized = result.hot_communities.map((c) => {
+      const name = (c.name || "").trim();
+      // Already clean
+      if (/^r\/[A-Za-z0-9_]{2,25}$/.test(name)) return c;
+      if (_KNOWN_PLATFORMS.has(name.toLowerCase())) return c;
+      // Try to extract r/subreddit from messy strings like "Reddit's r/freelance"
+      const m = name.match(/r\/([A-Za-z0-9_]{2,25})/i);
+      if (m) return { ...c, name: `r/${m[1]}` };
+      return c;
+    });
+
+    const valid = normalized.filter((c) => {
       const name = (c.name || "").trim();
       const lower = name.toLowerCase().replace(/[\s']/g, "");
       const isFake = _FAKE_FRAGMENTS.some((f) => lower.includes(f.replace(/[\s']/g, "")));
