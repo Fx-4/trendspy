@@ -1,7 +1,11 @@
 """
-Quick utility to delete a cached brief from Upstash Redis.
-Usage: python clear_cache.py "freelance scheduling app"
-       python clear_cache.py  (clears ALL brief: keys)
+Utility to delete cached briefs and/or rate-limit counters from Upstash Redis.
+
+Usage:
+  python clear_cache.py                         # clear ALL brief: cache keys
+  python clear_cache.py "freelance scheduling"  # clear one specific niche
+  python clear_cache.py --rates                 # clear ALL rate: limit keys
+  python clear_cache.py --rates 127.0.0.1       # clear rate limit for one IP
 """
 import hashlib
 import os
@@ -17,16 +21,36 @@ redis = Redis(
     token=os.getenv("UPSTASH_REDIS_REST_TOKEN", "")
 )
 
-if len(sys.argv) > 1:
-    # Clear a specific niche
-    niche = " ".join(sys.argv[1:])
+args = sys.argv[1:]
+
+# ── Rate-limit clearing ────────────────────────────────────────────────────────
+if args and args[0] == "--rates":
+    ip = args[1] if len(args) > 1 else None
+    if ip:
+        key = f"rate:{ip}"
+        deleted = redis.delete(key)
+        print(f"Rate key : {key}")
+        print(f"Deleted  : {deleted} key(s)")
+    else:
+        keys = redis.keys("rate:*")
+        if keys:
+            deleted = redis.delete(*keys)
+            print(f"Deleted {deleted} rate-limit key(s):")
+            for k in keys:
+                print(f"  - {k}")
+        else:
+            print("No rate-limit keys found.")
+
+# ── Brief cache clearing ───────────────────────────────────────────────────────
+elif args:
+    niche = " ".join(args)
     key = f"brief:{hashlib.md5(niche.lower().strip().encode()).hexdigest()}"
     deleted = redis.delete(key)
     print(f"Niche   : '{niche}'")
     print(f"Key     : {key}")
     print(f"Deleted : {deleted} key(s)")
+
 else:
-    # Clear ALL brief: keys
     keys = redis.keys("brief:*")
     if keys:
         deleted = redis.delete(*keys)
