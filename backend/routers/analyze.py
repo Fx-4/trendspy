@@ -241,6 +241,7 @@ def validate_sections(sections: dict) -> dict:
 
 
 async def analysis_generator(niche: str, client_ip: str, force: bool = False):
+    print(f"\n[ANALYZE] niche='{niche}' | force={force} | ip={client_ip}", flush=True)
     # Rate limiting — force=True skips the check so cache-busting is never blocked
     if not force:
         allowed = await cache_service.check_rate_limit(client_ip)
@@ -292,11 +293,13 @@ async def analysis_generator(niche: str, client_ip: str, force: bool = False):
         if se_data:      source_counts.append(f"{len(se_data)} Stack Exchange")
         if ph_data:      source_counts.append(f"{len(ph_data)} Product Hunt")
         source_counts.append(f"{len(tavily_data)} Tavily")
+        print(f"[SOURCES] reddit={len(reddit_data)} hn={len(hn_data)} devto={len(devto_data)} se={len(se_data)} ph={len(ph_data)} tavily={len(tavily_data)}", flush=True)
         yield sse("status", {"message": f"✓ {' + '.join(source_counts)} found", "step": 1, "done": True})
 
         # Step 2: Exa neural search
         yield sse("status", {"message": "Running neural search...", "step": 2, "total": 4})
         exa_data = await exa_service.search_exa(niche)
+        print(f"[SOURCES] exa={len(exa_data)}", flush=True)
         yield sse("status", {"message": f"✓ {len(exa_data)} additional sources from neural search", "step": 2, "done": True})
 
         # Step 3: AI Analysis
